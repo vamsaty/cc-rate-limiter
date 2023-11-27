@@ -1,4 +1,4 @@
-module githum.com/vamsaty/cc-rate-limiter
+module github.com/vamsaty/cc-rate-limiter
 
 go 1.19
 
