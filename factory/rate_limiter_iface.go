@@ -1,7 +1,7 @@
 package factory
 
 import (
-	tokenBucket "githum.com/vamsaty/cc-rate-limiter/token-bucket"
+	tokenBucket "github.com/vamsaty/cc-rate-limiter/token-bucket"
 )
 
 type RateConfig map[string]string

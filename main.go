@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"github.com/gin-gonic/gin"
-	"githum.com/vamsaty/cc-rate-limiter/factory"
+	"github.com/vamsaty/cc-rate-limiter/factory"
 )
 
 type Server struct {
