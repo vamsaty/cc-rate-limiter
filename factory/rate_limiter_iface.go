@@ -31,3 +31,12 @@ func NewRateLimiter(algo RateLimiterAlgo, config RateConfig) RateLimiter {
 		return nil
 	}
 }
+
+func NewRateLimiterFromConfig(config RateConfig) RateLimiter {
+	switch config["algo"] {
+	case "token_bucket":
+		return tokenBucket.NewTokenBucketLimiter(config)
+	default:
+		return nil
+	}
+}

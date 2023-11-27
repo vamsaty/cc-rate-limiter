@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"github.com/gin-gonic/gin"
 	"githum.com/vamsaty/cc-rate-limiter/factory"
 )
@@ -34,13 +35,24 @@ func (s *Server) Start() error {
 	return r.Run(":8080")
 }
 
+var (
+	rateLimitAlgo = flag.String("algo", "token_bucket", "rate limit algorithm")
+	/*token bucket flags*/
+	bucketCapacity    = flag.String("bucket_capacity", "10", "bucket capacity")
+	tokenPushInterval = flag.String("token_push_interval", "5s", "token push interval")
+)
+
+func ParseRateLimiterConfig() factory.RateConfig {
+	return factory.RateConfig{
+		"algo":                *rateLimitAlgo,
+		"bucket_capacity":     *bucketCapacity,
+		"token_push_interval": *tokenPushInterval,
+	}
+}
+
 func main() {
-	limiter := factory.NewRateLimiter(
-		factory.TokenBucket, map[string]string{
-			"bucket_capacity":     "10",
-			"token_push_interval": "5s",
-		},
-	)
-	server := NewServer(limiter)
-	server.Start()
+	flag.Parse()
+	config := ParseRateLimiterConfig()
+	limiter := factory.NewRateLimiterFromConfig(config)
+	NewServer(limiter).Start()
 }
