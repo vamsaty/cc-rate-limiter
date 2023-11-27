@@ -16,7 +16,7 @@ type RateLimiter interface {
 type RateLimiterAlgo uint
 
 const (
-	InvalidAlgo RateLimiterAlgo = iota
+	NoLimitAlgo RateLimiterAlgo = iota
 	TokenBucket
 	LeakyBucketMeter
 	LeakyBucketQueue
@@ -28,7 +28,7 @@ func NewRateLimiter(algo RateLimiterAlgo, config RateConfig) RateLimiter {
 	case TokenBucket:
 		return tokenBucket.NewTokenBucketLimiter(config)
 	default:
-		return nil
+		return &DummyRateLimit{}
 	}
 }
 
@@ -37,6 +37,13 @@ func NewRateLimiterFromConfig(config RateConfig) RateLimiter {
 	case "token_bucket":
 		return tokenBucket.NewTokenBucketLimiter(config)
 	default:
-		return nil
+		return &DummyRateLimit{}
 	}
 }
+
+type DummyRateLimit struct{}
+
+func (d *DummyRateLimit) CanLimit(s string) error { return nil }
+func (d *DummyRateLimit) Unregister(s string)     {}
+func (d *DummyRateLimit) Stop()                   {}
+func (d *DummyRateLimit) Stats() interface{}      { return nil }
