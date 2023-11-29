@@ -1,4 +1,4 @@
-package token_bucket
+package factory
 
 import (
 	"fmt"
@@ -7,70 +7,6 @@ import (
 	"sync/atomic"
 	"time"
 )
-
-var (
-	ErrBucketEmpty = fmt.Errorf("bucket is empty")
-	ErrBucketFull  = fmt.Errorf("bucket is full")
-)
-
-// TokenBucketConfig is the configuration for the token bucket
-type TokenBucketConfig struct {
-	BucketCapacity    int64
-	TokenPushInterval time.Duration
-}
-
-// tokenBucket is a token bucket implementation for rate limiting
-type tokenBucket struct {
-	bucketSizeAtomic  atomic.Int64  // current number of tokens in the bucket
-	bucketCapacity    int64         // max number of tokens in the bucket
-	Id                string        // Id of the bucket - username/userid or IP address
-	tokenPushInterval time.Duration // time interval to push tokens into the bucket
-	stopper           chan struct{} // stop the token pusher
-}
-
-// Stop stops the token pusher
-func (tb *tokenBucket) Stop() {
-	close(tb.stopper)
-}
-
-// addToken adds a token to the bucket
-func (tb *tokenBucket) addToken() error {
-	if tb.bucketSizeAtomic.Load() <= tb.bucketCapacity {
-		tb.bucketSizeAtomic.Add(1)
-		return nil
-	}
-	return ErrBucketFull
-}
-
-// removeToken removes a token from the bucket
-// this happens when a request is allowed
-func (tb *tokenBucket) removeToken() error {
-	if tb.bucketSizeAtomic.Load() > 0 {
-		tb.bucketSizeAtomic.Add(-1)
-		return nil
-	}
-	return ErrBucketEmpty
-}
-
-// StartTokenPusher starts the token pusher, pushes tokens into the bucket
-// at a fixed interval specified by tokenPushInterval
-func (tb *tokenBucket) StartTokenPusher() {
-	fmt.Println("starting token pusher for", tb.Id)
-	ticker := time.NewTicker(tb.tokenPushInterval)
-	for {
-		select {
-		case <-ticker.C:
-			if err := tb.addToken(); err != nil {
-				if err == ErrBucketFull {
-					fmt.Println("bucket is full, not adding token")
-				}
-			}
-		case <-tb.stopper:
-			fmt.Println("stopping token pusher for", tb.Id)
-			return
-		}
-	}
-}
 
 // TBLimiter is a token bucket limiter, satisfying the RateLimiter interface
 type TBLimiter struct {
@@ -95,7 +31,8 @@ func (tbl *TBLimiter) CanLimit(Id string) error {
 	if !ok {
 		fmt.Println("creating new bucket for", Id)
 		size := atomic.Int64{}
-		size.Store(0)
+		// start with a filled bucket
+		size.Store(tbl.config.BucketCapacity)
 		tb := &tokenBucket{
 			Id:                Id,
 			bucketCapacity:    tbl.config.BucketCapacity,
@@ -105,10 +42,10 @@ func (tbl *TBLimiter) CanLimit(Id string) error {
 		}
 		tbl.bucketMap[Id] = tb
 		// start the token pusher for this *new user*
-		go tb.StartTokenPusher()
+		go tb.startTokenPusher()
 		bucket = tb // update the bucket
 	}
-	return bucket.removeToken()
+	return bucket.allowRequest()
 }
 
 // Unregister remove a bucket from the @bucketMap
@@ -116,7 +53,7 @@ func (tbl *TBLimiter) Unregister(Id string) {
 	tbl.Lock()
 	defer tbl.Unlock()
 
-	if bucket, ok := tbl.bucketMap[Id]; ok { // bucket exists
+	if bucket := tbl.bucketMap[Id]; bucket != nil {
 		bucket.Stop()
 		delete(tbl.bucketMap, Id)
 	}
@@ -142,6 +79,8 @@ func (tbl *TBLimiter) Stats() interface{} {
 	return data
 }
 
+func (tbl *TBLimiter) GetLimit() int { return int(tbl.config.BucketCapacity) }
+
 // NewTokenBucketLimiter creates a new token bucket limiter
 func NewTokenBucketLimiter(config map[string]string) *TBLimiter {
 	var err error
@@ -152,6 +91,7 @@ func NewTokenBucketLimiter(config map[string]string) *TBLimiter {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("token push interval", tbConfig.TokenPushInterval)
 
 	// parse the bucket capacity
 	tbConfig.BucketCapacity, err = strconv.ParseInt(config["bucket_capacity"], 10, 64)
