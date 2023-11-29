@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/vamsaty/cc-rate-limiter/factory"
+	ccUtils "github.com/vamsaty/cc-utils"
 	"net/http"
 	"net/url"
 	"testing"
@@ -23,23 +24,13 @@ var getStatusCodeMap = func(numReq int) map[int]int {
 	return respMap
 }
 
-func Min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func Max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func IsValid(limit, numReq int) error {
-	c200 := Min(numReq, limit)
-	c429 := Max(0, numReq-limit)
+// IsValid checks the expected number of 200 and 429 status code responses
+func IsValid(maxAllowedReq, numReq int) error {
+	// 200 status code count should be minimum of numReq and maximum allowed
+	c200 := ccUtils.Min(numReq, maxAllowedReq)
+	// 429 status code count is 0 if numReq < maximum allowed requests. Otherwise,
+	// its numReq - maxAllowedReq. i.e. the number of requests that were blocked.
+	c429 := ccUtils.Max(0, numReq-maxAllowedReq)
 	data := getStatusCodeMap(numReq)
 	if data[200] == c200 && data[429] == c429 {
 		return nil
@@ -48,15 +39,20 @@ func IsValid(limit, numReq int) error {
 }
 
 type TestCase struct {
-	name   string
+	// name is the name of the testcase
+	name string
+	// config of the rate limiter
 	config factory.RateConfig
+	// numReq is the number of requests to make in a testcase
 	numReq int
 }
 
-func updateAndExecuteTests(t *testing.T, testCases []TestCase) {
+// runTestCases updates the rate limiter for the server and runs the test cases
+func runTestCases(t *testing.T, testCases []TestCase) {
 	server := NewServer(&factory.DummyRateLimit{})
 	go server.Start()
 
+	// for safety - sleep for server to come up.
 	time.Sleep(1 * time.Second)
 
 	for _, tc := range testCases {
@@ -75,10 +71,9 @@ func updateAndExecuteTests(t *testing.T, testCases []TestCase) {
 }
 
 func TestFixedWindowCounter(t *testing.T) {
-	updateAndExecuteTests(
+	runTestCases(
 		t,
 		[]TestCase{
-			/* ---------- FixedWindowCount ---------- */
 			{
 				name: "[FixedWindowCount] Block requests",
 				config: factory.RateConfig{
@@ -111,10 +106,9 @@ func TestFixedWindowCounter(t *testing.T) {
 }
 
 func TestTokenBucket(t *testing.T) {
-	updateAndExecuteTests(
+	runTestCases(
 		t,
 		[]TestCase{
-			/* ---------- TokenBucket ---------- */
 			{
 				name: "[TokenBucket] Equal bucket size and client requests, with slow token filling",
 				config: factory.RateConfig{
