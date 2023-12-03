@@ -52,7 +52,8 @@ The following flags for the following options are available -
 -request_per_sec 10 \
 -window_size 1s
 ```
+---
 
-
-#### Humble request to provide feedback on the code and the challenge. Thanks!
-#### kindly raise a bug in case of any issues.
+---
+###### PS: Humble request to provide feedback on the code and the challenge. Kindly raise a bug in case of any issues.
+###### Thanks! 
