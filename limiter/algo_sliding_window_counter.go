@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+// TODO: implement sliding window counter algorithm
+
 var (
 	ErrTooManyRequests = fmt.Errorf("too many requests")
 )

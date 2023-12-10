@@ -1,14 +1,16 @@
 package limiter
 
-import "fmt"
-
 /*
-Implements the Sliding Window Log algorithm for rate limiting.
-Instead of using a slice to store the requests, this uses a heap (requestHost)
+Algorithm: Sliding Window Log
+Use a heap to store the requests.
+* Push incoming requests in the heap, remove entries older than window
+  size from the heap
+* Rate limit if the number of requests in the heap is above allowed rate
 */
 
 import (
 	"container/heap"
+	"fmt"
 	"sort"
 	"strconv"
 	"sync"
@@ -114,7 +116,7 @@ type SlidingWindowLogConfig struct {
 	requestPerSec int
 }
 
-// Parse parses the config and stores the values in SlidingWindowLogConfig
+// Parse parses the args and stores the values in SlidingWindowLogConfig
 func (swlc *SlidingWindowLogConfig) Parse(config RateConfig) error {
 	limit, err := strconv.ParseInt(config["request_per_sec"], 10, 32)
 	if err != nil {
@@ -129,9 +131,8 @@ func (swlc *SlidingWindowLogConfig) Parse(config RateConfig) error {
 	return nil
 }
 
-// slidingWindowLog is a sliding window log implementation for rate limiting.
-// Algo: Store requests in a heap, remove entries older than window size from the heap.
-// Rate limit if the number of requests in the heap is above allowed rate.
+// slidingWindowLog is a sliding window log implementation for rate limiting
+// for each identity/client (user, ip, etc.)
 type slidingWindowLog struct {
 	mu *sync.Mutex
 	// Id is the id of the user or IP address

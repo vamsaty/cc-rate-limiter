@@ -1,5 +1,15 @@
 package limiter
 
+/*
+Algorithm: Token Bucket
+For each client/identity (IP address, username, etc.) a token bucket is created.
+The token bucket is initialized with a capacity and a refill rate.
+For every request determine the tokens to be added to the bucket, based on the
+time elapsed since the last request. Add the tokens (>=0) to the bucket. If the
+bucket is empty then reject the request. Otherwise, handle the request and
+remove a token from the bucket.
+*/
+
 import (
 	"fmt"
 	"strconv"
@@ -11,6 +21,68 @@ var (
 	ErrBucketEmpty = fmt.Errorf("bucket is empty")
 	//ErrBucketFull  = fmt.Errorf("bucket is full")
 )
+
+// TBLimiter is a token bucket limiter, satisfying the RateLimiter interface
+type TBLimiter struct {
+	// bucketMap is a map of userId to token bucket. Generally a bucket is
+	// created for each user/IP address
+	bucketMap map[string]*tokenBucket
+	// Mutex is a lock for bucketMap
+	*sync.RWMutex
+	// shutDown is a channel to stop the token pusher
+	shutDown chan struct{}
+	// config is the configuration for the token bucket
+	config *TokenBucketConfig
+}
+
+// Allow checks if a request can be allowed.
+func (tbl *TBLimiter) Allow(Id string) error {
+	tbl.Lock()
+	defer tbl.Unlock()
+
+	bucket := tbl.bucketMap[Id]
+	if bucket == nil {
+		bucket = newTokenBucket(Id, tbl.config)
+		tbl.bucketMap[Id] = bucket
+	}
+	return bucket.allowRequest()
+}
+
+// Unregister remove a bucket from the @bucketMap
+func (tbl *TBLimiter) Unregister(Id string) {
+	tbl.Lock()
+	defer tbl.Unlock()
+
+	if bucket := tbl.bucketMap[Id]; bucket != nil {
+		bucket.Stop()
+		delete(tbl.bucketMap, Id)
+	}
+}
+
+// Stop stops the token pusher for all buckets
+func (tbl *TBLimiter) Stop() {
+	for _, bucket := range tbl.bucketMap {
+		bucket.Stop()
+	}
+}
+
+// Stats returns the stats for all buckets
+func (tbl *TBLimiter) Stats() interface{} {
+	data := make(map[string]interface{})
+	for key, bucket := range tbl.bucketMap {
+		data[key] = map[string]interface{}{
+			"tokens":             bucket.tokens,
+			"capacity":           bucket.capacity,
+			"refill_rate":        bucket.refillRate,
+			"tokens_to_be_added": bucket.nextRefillSize(),
+			"last_refill":        bucket.lastRefill,
+			"current_time":       time.Now(),
+		}
+	}
+	return data
+}
+
+func (tbl *TBLimiter) GetLimit() int { return tbl.config.Capacity }
 
 // TokenBucketConfig is the configuration for the token bucket
 type TokenBucketConfig struct {
@@ -62,6 +134,8 @@ func (tb *tokenBucket) allowRequest() error {
 	return nil
 }
 
+// nextRefillSize returns the number of tokens to be added to the bucket as of time.now()
+// this is used for informational purpose only.
 func (tb *tokenBucket) nextRefillSize() int {
 	elapsed := time.Since(tb.lastRefill)
 	tokens := int(elapsed.Seconds()*tb.refillRate) + tb.tokens
@@ -71,6 +145,7 @@ func (tb *tokenBucket) nextRefillSize() int {
 	return tokens
 }
 
+// refill adds tokens to the bucket
 func (tb *tokenBucket) refill() {
 	elapsed := time.Since(tb.lastRefill)
 	tb.tokens += int(elapsed.Seconds() * tb.refillRate)
@@ -91,64 +166,3 @@ func newTokenBucket(Id string, config *TokenBucketConfig) *tokenBucket {
 	}
 	return &tb
 }
-
-// TBLimiter is a token bucket limiter, satisfying the RateLimiter interface
-type TBLimiter struct {
-	// bucketMap is a map of userId to token bucket. Generally a bucket is
-	// created for each user/IP address
-	bucketMap map[string]*tokenBucket
-	// Mutex is a lock for bucketMap
-	*sync.RWMutex
-	// shutDown is a channel to stop the token pusher
-	shutDown chan struct{}
-	// config is the configuration for the token bucket
-	config *TokenBucketConfig
-}
-
-// Allow checks if a request can be allowed.
-func (tbl *TBLimiter) Allow(Id string) error {
-	tbl.Lock()
-	defer tbl.Unlock()
-
-	bucket := tbl.bucketMap[Id]
-	if bucket == nil {
-		bucket = newTokenBucket(Id, tbl.config)
-		tbl.bucketMap[Id] = bucket
-	}
-	return bucket.allowRequest()
-}
-
-// Unregister remove a bucket from the @bucketMap
-func (tbl *TBLimiter) Unregister(Id string) {
-	tbl.Lock()
-	defer tbl.Unlock()
-
-	if bucket := tbl.bucketMap[Id]; bucket != nil {
-		bucket.Stop()
-		delete(tbl.bucketMap, Id)
-	}
-}
-
-// Stop stops the token pusher for all buckets
-func (tbl *TBLimiter) Stop() {
-	for _, bucket := range tbl.bucketMap {
-		bucket.Stop()
-	}
-}
-
-func (tbl *TBLimiter) Stats() interface{} {
-	data := make(map[string]interface{})
-	for key, bucket := range tbl.bucketMap {
-		data[key] = map[string]interface{}{
-			"tokens":         bucket.tokens,
-			"capacity":       bucket.capacity,
-			"refill_rate":    bucket.refillRate,
-			"current_tokens": bucket.nextRefillSize(),
-			"last_refill":    bucket.lastRefill,
-			"current_time":   time.Now(),
-		}
-	}
-	return data
-}
-
-func (tbl *TBLimiter) GetLimit() int { return tbl.config.Capacity }

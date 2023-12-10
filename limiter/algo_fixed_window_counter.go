@@ -1,7 +1,11 @@
 package limiter
 
 /*
+Algorithm: Fixed Window Counter
 Implements the Fixed Window Counter algorithm to rate limit requests.
+If the time elapsed between two consecutive requests is more than the
+window's length, the window is reset. Otherwise, rate limit if the window
+is full.
 */
 
 import (
@@ -22,9 +26,9 @@ type WindowLimiterImpl struct {
 	*sync.Mutex
 	windowMap map[string]*window
 	config    *WindowConfig
-	shutdown  chan struct{} // is dummy - unused
 }
 
+// Allow checks if a request can be allowed
 func (w *WindowLimiterImpl) Allow(id string) error {
 	w.Lock()
 	defer w.Unlock()
@@ -43,18 +47,16 @@ func (w *WindowLimiterImpl) Allow(id string) error {
 	return fwc.allowRequest()
 }
 
+// Unregister removes the window for the given id
 func (w *WindowLimiterImpl) Unregister(s string) {
 	w.Lock()
 	defer w.Unlock()
 	delete(w.windowMap, s)
 }
 
-func (w *WindowLimiterImpl) Stop() {
-	w.Lock()
-	defer w.Unlock()
-	close(w.shutdown)
-}
+func (w *WindowLimiterImpl) Stop() {}
 
+// Stats returns the stats for the window limiter
 func (w *WindowLimiterImpl) Stats() interface{} {
 	data := make(map[string]interface{})
 	for key, fwc := range w.windowMap {
@@ -77,6 +79,7 @@ type WindowConfig struct {
 	MaxRequestCount int
 }
 
+// Parse parses the args and populates the WindowConfig
 func (wc *WindowConfig) Parse(config map[string]string) error {
 	var err error
 	var value int64
@@ -97,9 +100,7 @@ func (wc *WindowConfig) Parse(config map[string]string) error {
 	return nil
 }
 
-// window represents the fixed window counter. If the time elapsed between
-// two consecutive requests is more than the window's length, the window
-// is reset. Otherwise, rate limit if the window is full.
+// window represents the fixed window counter (per identity - user, ip, etc.)
 type window struct {
 	// Id is used to identify the entity for which the window is created
 	Id string
