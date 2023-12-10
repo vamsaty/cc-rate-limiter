@@ -45,7 +45,6 @@ func NewRateLimiterFromConfig(config RateConfig) RateLimiter {
 			Mutex:     &sync.Mutex{},
 			windowMap: make(map[string]*window),
 			config:    winConfig,
-			shutdown:  make(chan struct{}),
 		}
 
 	case "sliding_window_log":
